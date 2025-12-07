@@ -26,6 +26,7 @@ dependencies = [
  "dhat",
  "itertools",
  "lina",
+ "pheap",
  "pico-args",
  "tinyjson",
 ]
@@ -319,6 +320,15 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-targets 0.48.5",
+]
+
+[[package]]
+name = "pheap"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64fdff273cb009ea15c5cbc3c9b693ad5c55c61118c533628bc60a35beed2b55"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

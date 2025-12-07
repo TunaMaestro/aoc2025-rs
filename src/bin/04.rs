@@ -1,6 +1,6 @@
 use std::{
     array,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BTreeMap, BinaryHeap, HashMap, HashSet},
     fmt::Display,
 };
 
@@ -8,6 +8,7 @@ use aoc_utils::{
     bucket::BucketQueue,
     grid::{Grid, Point},
 };
+use pheap::PairingHeap;
 
 advent_of_code::solution!(4);
 
@@ -167,6 +168,43 @@ pub fn part_two(input: &str) -> Option<u64> {
                 continue;
             }
             queue.decrease_key(p, 1);
+        }
+    }
+
+    Some(removed)
+}
+
+pub fn part_two_bad_queue(input: &str) -> Option<u64> {
+    let mut grid = Grid::read(input, |c| c == '@');
+    let mut queue: PairingHeap<Point, usize> = PairingHeap::new();
+    for p in grid.iter_coordinates() {
+        if grid.get_or_default(p) == false {
+            continue;
+        }
+
+        let count = grid.neighbours_and_corners(p).iter().filter(|(x, y)| **y).count();
+        queue.insert(p, count);
+    }
+
+
+    let mut removed = 0;
+
+    while let Some(node) = queue.delete_min() {
+        // let mut to_print = grid.map(|&x| if x { 'o' } else { ' ' });
+        // to_print[node.value] = '@';
+        // to_print.print();
+        // println!();
+        if node.1 > MAX_SURROUNDS {
+            break;
+        }
+        removed += 1;
+        grid[node.0] = false;
+        let neighbours = grid.neighbours_and_corners(node.0);
+        for (p, is_roll) in neighbours {
+            if !is_roll {
+                continue;
+            }
+            queue.decrease_prio(&p, 1);
         }
     }
 
