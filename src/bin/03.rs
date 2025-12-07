@@ -77,36 +77,36 @@ pub fn part_one(input: &str) -> Option<u64> {
 }
 
 const SELECT_DIGITS: usize = 12;
+type State = Vec<[u64; SELECT_DIGITS + 1]>;
 
 /// let P(i, j) be the largest joltage found by using j of batteries 0..i
 fn bank_joltage_large(batteries: &[u64]) -> u64 {
-    let mut dp: Vec<[u64; SELECT_DIGITS+1]> =
-        Vec::from_iter(std::iter::repeat_n([0; SELECT_DIGITS+1], batteries.len()));
+    let mut max = 0;
+    let mut dp: State =
+        Vec::from_iter(std::iter::repeat_n([0; SELECT_DIGITS + 1], batteries.len()));
     for i in 0..batteries.len() {
-        for j in 1..=SELECT_DIGITS {
+        for j in 1..=usize::min(i + 1, SELECT_DIGITS) {
             dp[i][j] = p(i, j, batteries, &mut dp);
+            max = max.max(dp[i][j]);
         }
     }
-    dp.iter().map(|x| x[SELECT_DIGITS - 1]).max().unwrap()
+    max
 }
 
-fn p(i: usize, j: usize, batteries: &[u64], dp: &mut Vec<[u64; SELECT_DIGITS+1]>) -> u64 {
+fn p(i: usize, j: usize, batteries: &[u64], dp: &mut State) -> u64 {
     // the jth battery is at position i.
     let this_bat = batteries[i];
-    if j == 1 {
-        return this_bat;
-    }
     if (j == 0) {
         return 0;
     }
-    if (j > i) {
+    if (j > i + 1) {
         return 0;
     }
+    if j == 1 {
+        return u64::max(this_bat, dp[i.saturating_sub(1)][1]);
+    }
 
-    u64::max(
-        p(i - 1, j, batteries, dp),
-        this_bat + 10 * p(i - 1, j - 1, batteries, dp),
-    )
+    u64::max(dp[i - 1][j], this_bat + 10 * dp[i - 1][j - 1])
 }
 
 pub fn part_two(input: &str) -> Option<u64> {

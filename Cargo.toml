@@ -2,7 +2,7 @@
 name = "advent_of_code"
 version = "0.1.0"
 authors = ["Saxon Dean"]
-edition = "2021"
+edition = "2024"
 default-run = "advent_of_code"
 publish = false
 
