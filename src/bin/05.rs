@@ -67,7 +67,7 @@ fn parse(input: &str) -> (Vec<Interval>, Vec<usize>) {
 // }
 
 fn merge_ranges(mut intervals: Vec<Interval>) -> Vec<Interval> {
-    intervals.sort_by_key(|x| (x.low, (x.high as isize)));
+    intervals.sort_unstable_by_key(|x| (x.low, (x.high as isize)));
     let mut init = intervals[0];
     intervals.push(Interval::of(usize::MAX, usize::MAX));
     let mut filtered_intervals: Vec<Interval> = intervals
@@ -120,6 +120,7 @@ fn is_single(intervals: &Vec<Interval>, num: usize) -> bool {
 pub fn part_one(input: &str) -> Option<usize> {
     let (mut intervals, mut nums) = parse(input);
     let intervals = merge_ranges(intervals);
+    nums.sort_unstable();
     Some(count_numbers_in_range(&intervals, &nums))
 }
 
