@@ -134,7 +134,7 @@ pub fn part_two(input: &str) -> Option<u64> {
             continue;
         }
 
-        let count = grid.neighbours_and_corners(p).iter().filter(|(x, y)| **y).count();
+        let count = grid.neighbours(p).iter().filter(|(x, y)| **y).count();
         priorities.insert(p, count);
     }
 
@@ -162,7 +162,7 @@ pub fn part_two(input: &str) -> Option<u64> {
         }
         removed += 1;
         grid[node.value] = false;
-        let neighbours = grid.neighbours_and_corners(node.value);
+        let neighbours = grid.neighbours(node.value);
         for (p, is_roll) in neighbours {
             if !is_roll {
                 continue;
@@ -182,7 +182,7 @@ pub fn part_two_bad_queue(input: &str) -> Option<u64> {
             continue;
         }
 
-        let count = grid.neighbours_and_corners(p).iter().filter(|(x, y)| **y).count();
+        let count = grid.neighbours(p).iter().filter(|(x, y)| **y).count();
         queue.insert(p, count);
     }
 
@@ -199,7 +199,7 @@ pub fn part_two_bad_queue(input: &str) -> Option<u64> {
         }
         removed += 1;
         grid[node.0] = false;
-        let neighbours = grid.neighbours_and_corners(node.0);
+        let neighbours = grid.neighbours(node.0);
         for (p, is_roll) in neighbours {
             if !is_roll {
                 continue;
