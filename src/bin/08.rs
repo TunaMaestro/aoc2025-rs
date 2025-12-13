@@ -115,6 +115,25 @@ pub fn largest_circuits_from_shortest_connections(
     r
 }
 
+
+// pub fn largest_circuits_from_shortest_connections(
+//     input: &str,
+//     no_shortest_connections: usize,
+// ) -> usize {
+//     let jboxes = parse(input);
+
+//     let distances = find_distances(&jboxes);
+
+//     let n = jboxes.len();
+//     let mut union = UnionFind::new(n);
+//     for (_, u, v) in distances.into_iter_sorted().take(no_shortest_connections) {
+//         union.union(u, v);
+//     }
+
+
+// }
+
+
 fn find_distances(jboxes: &[JBox]) -> BinaryHeap<(i64, usize, usize)> {
     let mut distances = BinaryHeap::new();
 
