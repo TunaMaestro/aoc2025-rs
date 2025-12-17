@@ -3,6 +3,7 @@
 ///
 /// I think the orientation i.e. knowing that the right side of the edge is always inside is needed as the edge may cut through the rectangle if it is on the edge of the rectangle.
 use lina::{Point2, Vec2};
+use aoc_utils::ResultExt;
 
 advent_of_code::solution!(9);
 
@@ -31,34 +32,22 @@ pub fn part_one(input: &str) -> Option<usize> {
         .max()
 }
 
-// takes in two corners of a rectangle
-// returns a bottom left and top right corner i.e. (x_low, y_low), (x_high, y_high)
-fn normalise_corners(mut a: P, mut b: P) -> (P, P) {
-    if a.x > b.x {
-        (a, b) = (b, a);
-    }
-
-    if a.y > b.y {
-        (a.y, b.y) = (b.y, a.y);
-    }
-
-    (a, b)
-}
-
 pub fn part_two(input: &str) -> Option<usize> {
     let points = parse(input);
 
     let edges = find_edges(&points);
 
+    let edge_set = EdgeSet::new(&edges);
+
     let max = points
         .iter()
         .enumerate()
-        .map(|(i, a)| points.iter().skip(i + 1).map(|b| (*a, *b)))
+        .map(|(i, a)| points.iter().skip(i + 1).map(|b| Rectangle::new(*a, *b)))
         .flatten()
-        .map(|(a, b)| normalise_corners(a, b))
-        .filter(|&rect| !any_edge_cuts_rectangle(&edges, rect))
+        .map(|r| r.normalise_corners())
+        .filter(|&rect| edge_set.test_rectangle(rect))
         // .inspect(|&(a, b)| eprintln!("(a, b) = {a:#?} {b:#?},  {}", area(a, b)))
-        .map(|(a, b)| area(a, b))
+        .map(|r| r.area())
         .max();
     max
 }
@@ -84,11 +73,17 @@ struct Edge {
     end: P,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
 struct VerticalEdge {
     x: usize,
     y_start: usize,
     y_end: usize,
+}
+
+impl Ord for VerticalEdge {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.x.cmp(&other.x)
+    }
 }
 
 impl VerticalEdge {
@@ -103,47 +98,92 @@ impl Edge {
     }
 }
 
-trait Rectangle {
-    fn transpose(&self) -> (P, P);
-}
+impl Rectangle {
+    fn new(a: P, b: P) -> Self {
+        Rectangle { a, b }
+    }
+    fn transpose(&self) -> Self {
+        Rectangle::new(P::new(self.a.y, self.a.x), P::new(self.b.y, self.b.x))
+    }
+    // takes in two corners of a rectangle
+    // returns a bottom left and top right corner i.e. (x_low, y_low), (x_high, y_high)
+    fn normalise_corners(&self) -> Rectangle {
+        let &Rectangle { mut a, mut b } = self;
 
-impl Rectangle for (P, P) {
-    fn transpose(&self) -> (P, P) {
-        (P::new(self.0.y, self.0.x), P::new(self.1.y, self.1.x))
+        if a.x > b.x {
+            (a, b) = (b, a);
+        }
+
+        if a.y > b.y {
+            (a.y, b.y) = (b.y, a.y);
+        }
+
+        Rectangle::new(a, b)
+    }
+
+    fn area(&self) -> usize {
+        let &Rectangle { a, b } = self;
+        area(a, b)
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum CornerFlag {
-    None,
-    Low,
-    High,
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Rectangle {
+    a: P,
+    b: P,
+}
+
+struct EdgeSet {
+    vertical: Vec<VerticalEdge>,
+    horizontal: Vec<VerticalEdge>,
+}
+
+impl EdgeSet {
+    fn new(edges: &[Edge]) -> Self {
+        let mut vertical = Vec::new();
+        let mut horizontal = Vec::new();
+        for edge in edges {
+            let vertical_edge = if edge.start.y == edge.end.y {
+                // edge is horizontal
+                horizontal.push(VerticalEdge {
+                    x: edge.start.y,
+                    y_start: edge.end.x,
+                    y_end: edge.start.x,
+                });
+            } else {
+                vertical.push(VerticalEdge {
+                    x: edge.start.x,
+                    y_start: edge.start.y,
+                    y_end: edge.end.y,
+                });
+            };
+        }
+        vertical.sort();
+        horizontal.sort();
+
+        EdgeSet {
+            vertical,
+            horizontal,
+        }
+    }
+
+    fn test_rectangle(&self, rectangle: Rectangle) -> bool {
+        !(any_edge_cuts_rectangle(&self.vertical, rectangle)
+            || any_edge_cuts_rectangle(&self.horizontal, rectangle.transpose()))
+    }
 }
 
 /// Edges are sorted
-fn any_edge_cuts_rectangle(edges: &[Edge], mut rectangle: (P, P)) -> bool {
-    rectangle = normalise_corners(rectangle.0, rectangle.1);
-    for edge in edges {
+fn any_edge_cuts_rectangle(edges: &[VerticalEdge], rectangle: Rectangle) -> bool {
+    let start_idx = edges.binary_search_by_key(&rectangle.a.x, |x| x.x).into_inner();
+    let end_idx = edges.binary_search_by_key(&rectangle.b.x, |x| x.x).into_inner();
+    let filtered_edges = &edges[start_idx..end_idx];
+    for edge in filtered_edges {
         // transpose into vertical edge
 
         let mut test_rectangle = rectangle;
-        let vertical_edge = if edge.start.y == edge.end.y {
-            // edge is horizontal
-            test_rectangle = rectangle.transpose();
-            VerticalEdge {
-                x: edge.start.y,
-                y_start: edge.end.x,
-                y_end: edge.start.x,
-            }
-        } else {
-            VerticalEdge {
-                x: edge.start.x,
-                y_start: edge.start.y,
-                y_end: edge.end.y,
-            }
-        };
 
-        if edge_cuts_rectangle(vertical_edge, test_rectangle) {
+        if edge_cuts_rectangle(*edge, test_rectangle) {
             return true;
         }
         // hold that the right side of the edge is inside
@@ -159,8 +199,8 @@ fn any_edge_cuts_rectangle(edges: &[Edge], mut rectangle: (P, P)) -> bool {
 /// |
 /// S
 ///
-fn edge_cuts_rectangle(edge: VerticalEdge, rectangle: (P, P)) -> bool {
-    if edge.x < rectangle.0.x || edge.x > rectangle.1.x {
+fn edge_cuts_rectangle(edge: VerticalEdge, rectangle: Rectangle) -> bool {
+    if edge.x < rectangle.a.x || edge.x > rectangle.b.x {
         return false;
     }
 
@@ -169,8 +209,8 @@ fn edge_cuts_rectangle(edge: VerticalEdge, rectangle: (P, P)) -> bool {
     let y_min = edge.y_start.min(edge.y_end);
     let y_max = edge.y_start.max(edge.y_end);
 
-    let ends_before = y_max <= rectangle.0.y;
-    let starts_after = y_min >= rectangle.1.y;
+    let ends_before = y_max <= rectangle.a.y;
+    let starts_after = y_min >= rectangle.b.y;
     if (ends_before || starts_after) && !(ends_before && starts_after) {
         return false;
     }
@@ -180,9 +220,9 @@ fn edge_cuts_rectangle(edge: VerticalEdge, rectangle: (P, P)) -> bool {
     // so right edge if running downwards
 
     let left_edge = if edge.y_start > edge.y_end {
-          rectangle.0.x
+        rectangle.a.x
     } else {
-          rectangle.1.x
+        rectangle.b.x
     };
     return edge.x != left_edge;
 }
@@ -229,8 +269,8 @@ mod tests {
         ];
         for (input, expected) in ins {
             assert_eq!(
-                normalise_corners(input.0, input.1),
-                (expected.0, expected.1)
+                Rectangle::new(input.0, input.1).normalise_corners(),
+                Rectangle::new(expected.0, expected.1)
             );
         }
     }
@@ -260,7 +300,7 @@ mod tests {
     fn test_single_cut() {
         assert!(edge_cuts_rectangle(
             VerticalEdge::new(7, 3, 1),
-            (P::new(2, 3), P::new(7, 1))
+            Rectangle::new(P::new(2, 3), P::new(7, 1))
         ))
     }
 
@@ -270,10 +310,12 @@ mod tests {
 
         let edges = find_edges(&points);
 
-        assert!(any_edge_cuts_rectangle(&edges, (P::new(2, 3), P::new(7, 1))) == true);
-        assert!(any_edge_cuts_rectangle(&edges, (P::new(2, 5), P::new(7, 3))) == false);
-        assert!(any_edge_cuts_rectangle(&edges, (P::new(6, 3), P::new(8, 10))) == true);
-        assert!(any_edge_cuts_rectangle(&edges, (P::new(9, 7), P::new(11, 1))) == false);
-        assert!(any_edge_cuts_rectangle(&edges, (P::new(9, 7), P::new(7, 3))) == true);
+        let edge_set = EdgeSet::new(&edges);
+
+        assert!(edge_set.test_rectangle(Rectangle::new(P::new(2, 3), P::new(7, 1))) == false);
+        assert!(edge_set.test_rectangle(Rectangle::new(P::new(2, 5), P::new(7, 3))) == true);
+        assert!(edge_set.test_rectangle(Rectangle::new(P::new(6, 3), P::new(8, 10))) == false);
+        assert!(edge_set.test_rectangle(Rectangle::new(P::new(9, 7), P::new(11, 1))) == true);
+        assert!(edge_set.test_rectangle(Rectangle::new(P::new(9, 7), P::new(7, 3))) == false);
     }
 }
