@@ -56,67 +56,60 @@ pub fn part_two(input: &str) -> Option<usize> {
         .map(|(i, a)| points.iter().skip(i + 1).map(|b| (*a, *b)))
         .flatten()
         .map(|(a, b)| normalise_corners(a, b))
-        .filter(|&rect| !any_other_point_inside(rect, &points))
-        .filter(|&(a, b)| {
-            let inside_point = a + Vec2::new(1, 1);
-            // eprintln!(
-            //     "{:#?}, {:#?} := {inside_point:#?}: {}",
-            //     a,
-            //     b,
-            //     is_point_inside(&edges, inside_point)
-            // );
-            is_point_inside(&edges, inside_point)
-        })
-        .inspect(|&(a, b)| eprintln!("(a, b) = {a:#?} {b:#?},  {}", area(a, b)))
+        .filter(|&rect| !any_edge_cuts_rectangle(&edges, rect))
+        // .inspect(|&(a, b)| eprintln!("(a, b) = {a:#?} {b:#?},  {}", area(a, b)))
         .map(|(a, b)| area(a, b))
         .max();
     max
 }
 
-fn any_other_point_inside(rectangle: (P, P), points: &[P]) -> bool {
-    let (a, b) = rectangle;
-    eprintln!();
-    points
-        .iter()
-        // .filter(|&&p| p != a && p != b)
-        // filter edges
-        // .filter(|&&p| !((p.x == a.x || p.x == b.x) || (p.y == a.y || p.y == b.y)))
-        .inspect(|&&p| eprintln!("{p:#?} {}", (rectangle_contains(a, b, p))))
-        .any(|&p| rectangle_contains(a, b, p))
-}
-
-fn find_edges(points: &Vec<P>) -> Vec<VerticalEdge> {
+fn find_edges(points: &Vec<P>) -> Vec<Edge> {
     let mut edges = vec![];
     for ps in points
         .windows(2)
-        .chain(std::iter::once(&[points[0], *points.last().unwrap()][..]))
+        .chain(std::iter::once(&[*points.last().unwrap(), points[0]][..]))
     {
-        let [p1, p2] = ps else {
+        let &[start, end] = ps else {
             panic!("windows didn't return size 2")
         };
         // eprintln!("{:#?} {:#?}", p1, p2);
-        if p1.x == p2.x {
-            edges.push(VerticalEdge {
-                x: p1.x,
-                y_low: p1.y.min(p2.y),
-                y_high: p1.y.max(p2.y),
-            });
-        }
+        edges.push(Edge { start, end });
     }
-    edges.sort_unstable_by_key(|x| x.x);
     edges
+}
+
+#[derive(Debug, PartialEq)]
+struct Edge {
+    start: P,
+    end: P,
 }
 
 #[derive(Debug, PartialEq)]
 struct VerticalEdge {
     x: usize,
-    y_low: usize,
-    y_high: usize,
+    y_start: usize,
+    y_end: usize,
 }
 
 impl VerticalEdge {
-    fn new(x: usize, y_low: usize, y_high: usize) -> Self {
-        Self { x, y_low, y_high }
+    fn new(x: usize, y_start: usize, y_end: usize) -> Self {
+        Self { x, y_start, y_end }
+    }
+}
+
+impl Edge {
+    fn new(start: P, end: P) -> Self {
+        Self { start, end }
+    }
+}
+
+trait Rectangle {
+    fn transpose(&self) -> (P, P);
+}
+
+impl Rectangle for (P, P) {
+    fn transpose(&self) -> (P, P) {
+        (P::new(self.0.y, self.0.x), P::new(self.1.y, self.1.x))
     }
 }
 
@@ -128,39 +121,70 @@ enum CornerFlag {
 }
 
 /// Edges are sorted
-fn is_point_inside(edges: &[VerticalEdge], point: P) -> bool {
-    use CornerFlag::*;
-    let mut inside = false;
-    let mut corner_flag: CornerFlag = None;
+fn any_edge_cuts_rectangle(edges: &[Edge], mut rectangle: (P, P)) -> bool {
+    rectangle = normalise_corners(rectangle.0, rectangle.1);
     for edge in edges {
-        if edge.x > point.x {
-            return inside;
-        }
-        let current_corner = {
-            if edge.y_low == point.y {
-                Low
-            } else if edge.y_high == point.y {
-                High
-            } else {
-                None
+        // transpose into vertical edge
+
+        let mut test_rectangle = rectangle;
+        let vertical_edge = if edge.start.y == edge.end.y {
+            // edge is horizontal
+            test_rectangle = rectangle.transpose();
+            VerticalEdge {
+                x: edge.start.y,
+                y_start: edge.end.x,
+                y_end: edge.start.x,
+            }
+        } else {
+            VerticalEdge {
+                x: edge.start.x,
+                y_start: edge.start.y,
+                y_end: edge.end.y,
             }
         };
-        if edge.y_low <= point.y && point.y <= edge.y_high {
-            match (corner_flag, current_corner) {
-                (None, _) | (_, None) | (High, High) | (Low, Low) => {
-                    inside = !inside;
-                }
-                _ => {}
-            }
 
-            if current_corner != None && corner_flag != None {
-                corner_flag = None;
-            } else {
-                corner_flag = current_corner;
-            }
+        if edge_cuts_rectangle(vertical_edge, test_rectangle) {
+            return true;
         }
+        // hold that the right side of the edge is inside
     }
-    return inside;
+    return false;
+}
+
+/// Valid
+/// E
+/// |    #
+/// |
+/// |#
+/// |
+/// S
+///
+fn edge_cuts_rectangle(edge: VerticalEdge, rectangle: (P, P)) -> bool {
+    if edge.x < rectangle.0.x || edge.x > rectangle.1.x {
+        return false;
+    }
+
+    // ax <= edge.x <= bx
+
+    let y_min = edge.y_start.min(edge.y_end);
+    let y_max = edge.y_start.max(edge.y_end);
+
+    let ends_before = y_max <= rectangle.0.y;
+    let starts_after = y_min >= rectangle.1.y;
+    if (ends_before || starts_after) && !(ends_before && starts_after) {
+        return false;
+    }
+
+    // edge overlaps rectangle
+    // it cuts the rectangle if it is NOT the left edge (when running start->end upwards)
+    // so right edge if running downwards
+
+    let left_edge = if edge.y_start > edge.y_end {
+          rectangle.0.x
+    } else {
+          rectangle.1.x
+    };
+    return edge.x != left_edge;
 }
 
 fn rectangle_contains(mut a: P, mut b: P, p: P) -> bool {
@@ -212,23 +236,6 @@ mod tests {
     }
 
     #[test]
-    fn test_valid() {
-        let points = parse(&advent_of_code::template::read_file("examples", DAY));
-
-        let test_rec = (P::new(2, 3), P::new(9, 5));
-
-        assert!(!any_other_point_inside(test_rec, &points));
-        assert!(any_other_point_inside(
-            (P::new(2, 1), P::new(11, 5)),
-            &points
-        ));
-        assert!(any_other_point_inside(
-            (P::new(2, 3), P::new(9, 7)),
-            &points
-        ));
-    }
-
-    #[test]
     fn test_find_edges() {
         let points = parse(&advent_of_code::template::read_file("examples", DAY));
 
@@ -237,25 +244,36 @@ mod tests {
         assert_eq!(
             edges,
             vec![
-                VerticalEdge::new(2, 3, 5),
-                VerticalEdge::new(7, 1, 3),
-                VerticalEdge::new(9, 5, 7),
-                VerticalEdge::new(11, 1, 7)
+                Edge::new(P::new(7, 1), P::new(11, 1)),
+                Edge::new(P::new(11, 1), P::new(11, 7)),
+                Edge::new(P::new(11, 7), P::new(9, 7)),
+                Edge::new(P::new(9, 7), P::new(9, 5)),
+                Edge::new(P::new(9, 5), P::new(2, 5)),
+                Edge::new(P::new(2, 5), P::new(2, 3)),
+                Edge::new(P::new(2, 3), P::new(7, 3)),
+                Edge::new(P::new(7, 3), P::new(7, 1)),
             ]
         )
     }
 
     #[test]
-    fn test_inside() {
+    fn test_single_cut() {
+        assert!(edge_cuts_rectangle(
+            VerticalEdge::new(7, 3, 1),
+            (P::new(2, 3), P::new(7, 1))
+        ))
+    }
+
+    #[test]
+    fn test_cuts() {
         let points = parse(&advent_of_code::template::read_file("examples", DAY));
 
         let edges = find_edges(&points);
 
-        assert!(is_point_inside(&edges, P::new(1, 1)) == false);
-        assert!(is_point_inside(&edges, P::new(5, 5)) == true);
-        assert!(is_point_inside(&edges, P::new(10, 3)) == true);
-        assert!(is_point_inside(&edges, P::new(12, 3)) == false);
-        assert!(is_point_inside(&edges, P::new(12, 5)) == false);
-        assert!(is_point_inside(&edges, P::new(10, 7)) == true);
+        assert!(any_edge_cuts_rectangle(&edges, (P::new(2, 3), P::new(7, 1))) == true);
+        assert!(any_edge_cuts_rectangle(&edges, (P::new(2, 5), P::new(7, 3))) == false);
+        assert!(any_edge_cuts_rectangle(&edges, (P::new(6, 3), P::new(8, 10))) == true);
+        assert!(any_edge_cuts_rectangle(&edges, (P::new(9, 7), P::new(11, 1))) == false);
+        assert!(any_edge_cuts_rectangle(&edges, (P::new(9, 7), P::new(7, 3))) == true);
     }
 }
