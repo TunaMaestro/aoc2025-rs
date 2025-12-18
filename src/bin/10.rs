@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use itertools::Itertools;
 
@@ -24,7 +24,7 @@ fn parse_machine(input: &str) -> Option<Machine> {
     let mut joltage = vec![];
     for part in iter {
         let slice = &part[1..part.len() - 1];
-        eprintln!("{part} {slice}");
+        // eprintln!("{part} {slice}");
         if part.as_bytes()[0] != b'(' {
             joltage = parse_joltage(slice);
             break;
@@ -67,10 +67,7 @@ fn parse_joltage(joltage: &str) -> Vec<usize> {
 pub fn part_one(input: &str) -> Option<usize> {
     let machines = parse(input);
 
-    for e in machines {
-        eprintln!("{e}");
-    }
-    todo!()
+    Some(machines.iter().map(|x| x.optimise_steps()).sum())
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
@@ -110,6 +107,38 @@ impl Display for Machine {
     }
 }
 
+impl FromStr for Machine {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_machine(s).ok_or(())
+    }
+}
+
+impl Machine {
+    fn optimise_steps(&self) -> usize {
+        let mut best = usize::MAX;
+        let combinations = 1 << self.buttons.len();
+        for setting in 0..combinations {
+            let mut option = 0;
+            let mut number_set = 0;
+            for (i, &button) in self.buttons.iter().enumerate() {
+                let m = 1 << i;
+                if m & setting == 0 {
+                    continue;
+                }
+                option ^= button;
+                number_set += 1;
+            }
+
+            if option == self.goal && number_set < best {
+                best = number_set;
+            }
+        }
+        best
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,12 +146,21 @@ mod tests {
     #[test]
     fn test_part_one() {
         let result = part_one(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(7));
     }
 
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_machine() {
+        let m: Machine = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
+            .parse()
+            .unwrap();
+
+        assert_eq!(m.optimise_steps(), 2);
     }
 }
