@@ -108,9 +108,9 @@ pub fn largest_circuits_from_shortest_connections(
         .fold(1, |a, b| a * b);
 
     let now4 = Instant::now();
-    eprintln!("Nearest neighbours: {:#?}", now2 - now);
-    eprintln!("BFS:                {:#?}", now3 - now2);
-    eprintln!("Colouring Max:      {:#?}", now4 - now3);
+    // eprintln!("Nearest neighbours: {:#?}", now2 - now);
+    // eprintln!("BFS:                {:#?}", now3 - now2);
+    // eprintln!("Colouring Max:      {:#?}", now4 - now3);
 
     r
 }
