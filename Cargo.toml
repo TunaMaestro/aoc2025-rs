@@ -31,6 +31,7 @@ aoc-utils = { path = "../aoc-utils" }
 lina = "0.2.1"
 itertools = "0.14.0"
 pheap = "0.3.0"
+arrayvec = "0.7.6"
 
 [lints.rust]
 unused = "allow"

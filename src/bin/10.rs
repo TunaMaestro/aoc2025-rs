@@ -1,5 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
+use arrayvec::ArrayVec;
 use itertools::Itertools;
 
 advent_of_code::solution!(10);
@@ -20,8 +21,8 @@ fn parse_machine(input: &str) -> Option<Machine> {
 
     let goal = parse_indicator(indicator_slice);
 
-    let mut buttons = vec![];
-    let mut joltage = vec![];
+    let mut buttons = ArrayVec::new();
+    let mut joltage = ArrayVec::new();
     for part in iter {
         let slice = &part[1..part.len() - 1];
         // eprintln!("{part} {slice}");
@@ -57,7 +58,7 @@ fn parse_button(button: &str) -> usize {
     out
 }
 
-fn parse_joltage(joltage: &str) -> Vec<usize> {
+fn parse_joltage(joltage: &str) -> ArrayVec<usize, 10> {
     joltage
         .split(",")
         .map(|x| x.parse().expect("All joltages must be integers"))
@@ -78,8 +79,8 @@ pub fn part_two(input: &str) -> Option<usize> {
 struct Machine {
     goal_size: usize,
     goal: usize,
-    buttons: Vec<usize>,
-    joltage: Vec<usize>,
+    buttons: ArrayVec<usize, 20>,
+    joltage: ArrayVec<usize, 10>,
 }
 
 impl Display for Machine {
