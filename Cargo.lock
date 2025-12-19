@@ -50,6 +50,7 @@ dependencies = [
 [[package]]
 name = "aoc-utils"
 version = "0.2.0"
+source = "git+https://github.com/TunaMaestro/aoc-utils.git#dde9917655a66b789efbc45e92fa96cc737c543f"
 dependencies = [
  "arrayvec",
  "atoi",
