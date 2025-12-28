@@ -71,9 +71,26 @@ fn parse_joltage(joltage: &str) -> ArrayVec<usize, 10> {
         .collect()
 }
 
+fn generate_sequences(max_len: usize) -> Vec<Vec<usize>> {
+    (0..=max_len)
+        .map(|x| {
+            let mut v: Vec<usize> = (0..(1 << x)).collect();
+            v.sort_by_key(|f| f.count_ones());
+            v
+        })
+        .collect()
+}
+
 pub fn part_one(input: &str) -> Option<usize> {
     let machines = parse(input);
-    Some(machines.iter().map(|x| x.optimise_steps()).sum())
+    let max_buttons = machines.iter().map(|x| x.buttons.len()).max().unwrap_or(0);
+    let ordered_iterations = generate_sequences(max_buttons);
+    Some(
+        machines
+            .iter()
+            .map(|x| x.optimise_steps(&ordered_iterations))
+            .sum(),
+    )
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
@@ -231,10 +248,8 @@ impl FromStr for Machine {
 }
 
 impl Machine {
-    fn optimise_steps(&self) -> usize {
-        let mut best = usize::MAX;
-        let combinations = 1 << self.buttons.len();
-        for setting in 0..combinations {
+    fn optimise_steps(&self, order: &Vec<Vec<usize>>) -> usize {
+        for setting in order[self.buttons.len()].iter() {
             let mut option = 0;
             let mut number_set = 0;
             for (i, &button) in self.buttons.iter().enumerate() {
@@ -246,11 +261,11 @@ impl Machine {
                 number_set += 1;
             }
 
-            if option == self.goal && number_set < best {
-                best = number_set;
+            if option == self.goal {
+                return number_set;
             }
         }
-        best
+        usize::MAX
     }
 }
 
@@ -374,7 +389,8 @@ mod tests {
             .parse()
             .unwrap();
 
-        assert_eq!(m.optimise_steps(), 2);
+        let ordered = generate_sequences(10);
+        assert_eq!(m.optimise_steps(&ordered), 2);
     }
 
     #[test]
@@ -384,5 +400,11 @@ mod tests {
             .unwrap();
         let e = Equation::from_machine(&m);
         assert_eq!(e.solve_microlp(), 10);
+    }
+
+    #[test]
+    fn test_gen() {
+        let a = generate_sequences(3);
+        assert_eq!(a[3], vec![0, 1, 2, 4, 3, 5, 6, 7])
     }
 }
