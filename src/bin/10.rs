@@ -32,7 +32,6 @@ fn parse_machine(input: &str) -> Option<Machine> {
     let mut joltage = ArrayVec::new();
     for part in iter {
         let slice = &part[1..part.len() - 1];
-        // eprintln!("{part} {slice}");
         if part.as_bytes()[0] != b'(' {
             joltage = parse_joltage(slice);
             break;
@@ -74,7 +73,6 @@ fn parse_joltage(joltage: &str) -> ArrayVec<usize, 10> {
 
 pub fn part_one(input: &str) -> Option<usize> {
     let machines = parse(input);
-
     Some(machines.iter().map(|x| x.optimise_steps()).sum())
 }
 
@@ -99,8 +97,6 @@ struct Machine {
 struct Equation {
     a: Matrix<i64>,
     y: DVector<i64>,
-    // m: usize, // rows
-    // n: usize, // cols
 }
 
 const C: usize = 11;
@@ -124,9 +120,7 @@ impl<T: Debug + Copy> MyMatrix for Matrix<T> {
 
 impl Equation {
     fn from_machine(machine: &Machine) -> Self {
-        // a column corresponds to a variable; a the number of times button i is pressed
         let ncols = machine.buttons.len();
-        // a row corresponds to one joltage output value
         let nrows = machine.joltage.len();
 
         let mut matrix = Matrix::zeros(nrows, ncols);
@@ -142,21 +136,17 @@ impl Equation {
         let y = machine.joltage.iter().map(|&x| x as i64).collect();
         let y = DVector::from_vec(y);
 
-        // assert!(matrix.rank(0.01) == matrix.nrows());
-
         Equation { a: matrix, y }
     }
 
     fn row_echelon_form(&mut self) {
-        // gaussian elimination
         let a = &mut self.a;
 
-        let mut h = 0; // Initialization of the pivot row
-        let mut k = 0; // Initialization of the pivot column
+        let mut h = 0;
+        let mut k = 0;
 
         while h < a.nrows() && k < a.ncols() {
             let col = a.column(k);
-            // let i_max = argmax(&col.as_slice()[h..]) + h;
             let i_max = col.as_slice()[h..]
                 .iter()
                 .enumerate()
@@ -183,14 +173,10 @@ impl Equation {
                 if leading_of_row == 0 {
                     continue;
                 }
-                // let lcm = lcm(leading_of_row, leading_of_pivot);
-                // let factor_pivot = lcm / leading_of_pivot;
-                // let factor_row = lcm / leading_of_row;
 
                 let f = leading_of_row / leading_of_pivot;
 
                 for j in k + 1..a.nrows() {
-                    // let new = factor_row * a[(i, j)] - factor_pivot * a[(h, j)];
                     let new = a[(i, j)] - f * a[(h, j)];
                     a[(i, j)] = new;
                 }
@@ -269,7 +255,7 @@ impl Machine {
 }
 
 impl Equation {
-    fn to_problem(&self) -> Problem {
+    fn solve_microlp(&self) -> usize {
         let mut problem = Problem::new(microlp::OptimizationDirection::Minimize);
 
         let mut vars = vec![];
@@ -293,13 +279,76 @@ impl Equation {
             );
         }
 
-        problem
+        let ans = problem
+            .solve()
+            .expect("could not solve problem")
+            .objective();
+        ans.round() as usize
     }
+}
 
+#[cfg(not(feature = "cbc"))]
+impl Equation {
     fn solve(&self) -> usize {
-        let sol = self.to_problem().solve().expect("could not solve problem");
+        self.solve_microlp()
+    }
+}
 
-        sol.objective() as usize
+#[cfg(feature = "cbc")]
+mod cbc {
+    use super::*;
+    use coin_cbc::{Model, Solution};
+
+    impl Equation {
+        fn solve_cbc(&self) -> usize {
+            let mut model = Model::default();
+            model.set_obj_sense(coin_cbc::Sense::Minimize);
+
+            let mut cols = vec![];
+            for _ in 0..self.a.ncols() {
+                let col = model.add_integer();
+                model.set_obj_coeff(col, 1.0);
+                model.set_col_lower(col, 0.0);
+                cols.push(col);
+            }
+
+            let mut rows = vec![];
+            for j in 0..self.a.nrows() {
+                let row = model.add_row();
+                model.set_row_equal(row, self.y[j] as f64);
+                rows.push(row)
+            }
+
+            for (i, &row) in rows.iter().enumerate() {
+                for (j, &col) in cols.iter().enumerate() {
+                    model.set_weight(row, col, self.a[(i, j)] as f64);
+                }
+            }
+
+            let mut raw = model.to_raw();
+            dbg!(raw.solve());
+            dbg!(raw.col_solution());
+
+            let ans = 0.0;
+            ans as usize
+        }
+
+        pub fn solve(&self) -> usize {
+            self.solve_cbc()
+        }
+    }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_equation_cbc() {
+            let m: Machine = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
+                .parse()
+                .unwrap();
+            let e = Equation::from_machine(&m);
+            assert_eq!(e.solve_cbc(), 10);
+        }
     }
 }
 
@@ -329,11 +378,11 @@ mod tests {
     }
 
     #[test]
-    fn test_equation() {
+    fn test_equation_microlp() {
         let m: Machine = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
             .parse()
             .unwrap();
-        let mut e = Equation::from_machine(&m);
-        assert_eq!(e.solve(), 10);
+        let e = Equation::from_machine(&m);
+        assert_eq!(e.solve_microlp(), 10);
     }
 }
