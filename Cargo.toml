@@ -34,6 +34,7 @@ pheap = "0.3.0"
 arrayvec = "0.7.6"
 num = "0.4.3"
 nalgebra = "0.34.1"
+microlp = "0.2.11"
 
 [lints.rust]
 unused = "allow"

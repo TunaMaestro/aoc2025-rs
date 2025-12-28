@@ -6,6 +6,7 @@ use std::{
 use arrayvec::ArrayVec;
 use itertools::Itertools;
 
+use microlp::{LinearExpr, Problem};
 use nalgebra::{DMatrix as Matrix, DVector};
 use num::{Signed, integer::lcm};
 
@@ -79,10 +80,12 @@ pub fn part_one(input: &str) -> Option<usize> {
 
 pub fn part_two(input: &str) -> Option<usize> {
     let machines = parse(input);
-    machines
+    let sum = machines
         .iter()
-        .for_each((|x| eprintln!("{} {}", x.buttons.len(), x.joltage.len())));
-    todo!();
+        .map(|x| Equation::from_machine(x))
+        .map(|x| x.solve())
+        .sum();
+    Some(sum)
 }
 
 #[derive(Debug)]
@@ -94,8 +97,8 @@ struct Machine {
 }
 
 struct Equation {
-    a: Matrix<f64>,
-    rows: usize,
+    a: Matrix<i64>,
+    y: DVector<i64>,
     // m: usize, // rows
     // n: usize, // cols
 }
@@ -131,20 +134,17 @@ impl Equation {
             for j in 0..machine.joltage.len() {
                 let mask = 1 << j;
                 if mask & button != 0 {
-                    matrix[(j, i)] = 1.0;
+                    matrix[(j, i)] = 1;
                 }
             }
         }
 
-        let y = machine.joltage.iter().map(|&x| x as isize).collect();
+        let y = machine.joltage.iter().map(|&x| x as i64).collect();
         let y = DVector::from_vec(y);
 
-        assert!(matrix.rank(0.01) == matrix.nrows());
+        // assert!(matrix.rank(0.01) == matrix.nrows());
 
-        Equation {
-            a: matrix,
-            rows: machine.buttons.len(),
-        }
+        Equation { a: matrix, y }
     }
 
     fn row_echelon_form(&mut self) {
@@ -160,13 +160,13 @@ impl Equation {
             let i_max = col.as_slice()[h..]
                 .iter()
                 .enumerate()
-                .filter(|x| *x.1 > 0.0)
+                .filter(|x| *x.1 > 0)
                 .map(|x| x.0)
                 .next()
                 .unwrap_or(0)
                 + h;
 
-            if a[(i_max, k)] == 0.0 {
+            if a[(i_max, k)] == 0 {
                 k += 1;
                 continue;
             }
@@ -178,9 +178,9 @@ impl Equation {
                 let leading_of_row = a[(i, k)];
                 let leading_of_pivot = a[(h, k)];
 
-                a[(i, k)] = 0.0;
+                a[(i, k)] = 0;
 
-                if leading_of_row == 0.0 {
+                if leading_of_row == 0 {
                     continue;
                 }
                 // let lcm = lcm(leading_of_row, leading_of_pivot);
@@ -189,7 +189,7 @@ impl Equation {
 
                 let f = leading_of_row / leading_of_pivot;
 
-                for j in k + 1..self.rows {
+                for j in k + 1..a.nrows() {
                     // let new = factor_row * a[(i, j)] - factor_pivot * a[(h, j)];
                     let new = a[(i, j)] - f * a[(h, j)];
                     a[(i, j)] = new;
@@ -268,6 +268,41 @@ impl Machine {
     }
 }
 
+impl Equation {
+    fn to_problem(&self) -> Problem {
+        let mut problem = Problem::new(microlp::OptimizationDirection::Minimize);
+
+        let mut vars = vec![];
+        for i in 0..self.a.ncols() {
+            vars.push(problem.add_integer_var(1.0, (0, i32::MAX)));
+        }
+
+        for row_idx in 0..self.a.nrows() {
+            let mut joltage_linexp = LinearExpr::empty();
+            for i in 0..self.a.ncols() {
+                if self.a[(row_idx, i)] == 1 {
+                    joltage_linexp.add(vars[i], 1.0);
+                } else {
+                    joltage_linexp.add(vars[i], 0.0);
+                }
+            }
+            problem.add_constraint(
+                joltage_linexp,
+                microlp::ComparisonOp::Eq,
+                self.y[row_idx] as f64,
+            );
+        }
+
+        problem
+    }
+
+    fn solve(&self) -> usize {
+        let sol = self.to_problem().solve().expect("could not solve problem");
+
+        sol.objective() as usize
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,7 +316,7 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(33));
     }
 
     #[test]
@@ -299,14 +334,6 @@ mod tests {
             .parse()
             .unwrap();
         let mut e = Equation::from_machine(&m);
-        dbg!(m);
-
-        eprintln!("{}", e.a);
-        e.row_echelon_form();
-        eprintln!("{}", e.a);
-
-        let qr = e.a.qr();
-        eprintln!("QR:{}{}", qr.q(), qr.r());
-
+        assert_eq!(e.solve(), 10);
     }
 }
