@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
+    num::Saturating,
     str::FromStr,
 };
 
@@ -328,62 +329,37 @@ impl Machine {
             return 0;
         }
         if let Some(&x) = joltage_cache.get(&goal) {
+            // eprintln!("found {goal:?} -> {x}");
             return x;
         }
 
         let bin_goal = to_parity(&goal);
-        let selections_to_make_even = &*selection_cache
+        // let selections_to_make_even = &self.all_parity_patterns(order, bin_goal);
+        let selections_to_make_even = selection_cache
             .entry(bin_goal)
-            .or_insert_with(|| self.all_parity_patterns(order, bin_goal));
-        let best_of_layer = self.layer_even(order, goal.clone(), bin_goal);
-        let ans = best_of_layer
-            .iter()
-            .map(|(goal, cost)| {
-                let half_goal = goal.iter().map(|x| x >> 1).collect();
-                //         // eprintln!("{:?}", &half_goal);
-                (*cost as usize).saturating_add(
-                    self.optimise_joltage(order, selection_cache, joltage_cache, half_goal)
-                        .saturating_mul(2),
-                )
-            })
-            .min()
-            .unwrap_or(usize::MAX);
+            .or_insert_with(|| self.all_parity_patterns(order, bin_goal))
+            .clone();
+
+        let mut ans = usize::MAX;
+        for presses in selections_to_make_even {
+            let Some(after) = self.apply_pattern(&goal, presses) else {
+                continue;
+            };
+            let half_goal = after.iter().map(|x| x / 2).collect();
+            let cost = Saturating(presses.count_ones() as usize);
+
+            let half_cost =
+                Saturating(self.optimise_joltage(order, selection_cache, joltage_cache, half_goal));
+            let choice_cost = cost + Saturating(2) * half_cost;
+            ans = ans.min(choice_cost.0);
+        }
 
         joltage_cache.insert(goal, ans);
         // eprintln!("<<      {:?}", &ans);
         ans
     }
 
-    fn layer_even(
-        &self,
-        order: &Vec<Vec<usize>>,
-        goal: ArrayVec<usize, 10>,
-        bin_goal: usize,
-    ) -> HashMap<ArrayVec<usize, 10>, u32> {
-        let selections_to_make_even = &self.all_parity_patterns(order, bin_goal);
-        let mut best_of_layer = HashMap::new();
-        // eprintln!("ways: {} {:?}", selections_to_make_even.len(), &selections_to_make_even);
-        for &pattern in selections_to_make_even {
-            if let Some(next_goal) = self.apply_pattern(&goal, &mut best_of_layer, pattern) {
-                let cost = pattern.count_ones();
-                //         eprintln!("{:0>6b} {:?} {:?} {}", pattern, goal, &next_goal, cost,);
-
-                let curr = best_of_layer.entry(next_goal.clone()).or_insert(cost);
-                *curr = (*curr).min(cost);
-            } else {
-                //         eprintln!("{:0>6b} {:?} negative", pattern, goal);
-            }
-        }
-        // eprintln!("endw: {} {:?}", selections_to_make_even.len(), &selections_to_make_even);
-        best_of_layer
-    }
-
-    fn apply_pattern(
-        &self,
-        goal: &ArrayVec<usize, 10>,
-        best_of_layer: &mut HashMap<ArrayVec<usize, 10>, u32>,
-        pattern: usize,
-    ) -> Option<Joltage> {
+    fn apply_pattern(&self, goal: &Joltage, pattern: usize) -> Option<Joltage> {
         let mut copy = goal.clone();
 
         for selected_btn in BitIter::from(pattern) {

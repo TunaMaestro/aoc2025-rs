@@ -1,3 +1,4 @@
+from time import perf_counter_ns
 from functools import cache
 from itertools import combinations, product
 
@@ -40,5 +41,11 @@ def solve(raw: str):
 		score += subscore
 	print(score)
 
-solve(open("data/inputs/10.txt").read())
+input = open("data/inputs/10.txt").read()
+
+start = perf_counter_ns()
+solve(input)
+end = perf_counter_ns()
+
+print(f"{(end - start) / 1_000_000} ms")
 
