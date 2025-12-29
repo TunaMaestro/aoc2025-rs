@@ -1,14 +1,16 @@
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     str::FromStr,
 };
 
 use arrayvec::ArrayVec;
+use bit_iter::BitIter;
 use itertools::Itertools;
 
-use microlp::{LinearExpr, Problem};
+use microlp::{LinearExpr, OptimizationDirection, Problem};
 use nalgebra::{DMatrix as Matrix, DVector};
-use num::{Signed, integer::lcm};
+use num::{Integer, Signed, integer::lcm};
 
 advent_of_code::solution!(10);
 
@@ -95,6 +97,19 @@ pub fn part_one(input: &str) -> Option<usize> {
 
 pub fn part_two(input: &str) -> Option<usize> {
     let machines = parse(input);
+    let max_buttons = machines.iter().map(|x| x.buttons.len()).max().unwrap_or(0);
+    let ordered_iterations = generate_sequences(max_buttons);
+
+    Some(
+        machines
+            .iter()
+            .map(|x| x.solve_by_halving(&ordered_iterations))
+            .sum(),
+    )
+}
+
+pub fn part_two_ilp(input: &str) -> Option<usize> {
+    let machines = parse(input);
     let sum = machines
         .iter()
         .map(|x| Equation::from_machine(x))
@@ -103,12 +118,14 @@ pub fn part_two(input: &str) -> Option<usize> {
     Some(sum)
 }
 
+type Joltage = ArrayVec<usize, 10>;
+
 #[derive(Debug)]
 struct Machine {
     goal_size: usize,
     goal: usize,
     buttons: ArrayVec<usize, 20>,
-    joltage: ArrayVec<usize, 10>,
+    joltage: Joltage,
 }
 
 struct Equation {
@@ -247,6 +264,11 @@ impl FromStr for Machine {
     }
 }
 
+struct ParitySolution {
+    number_steps: usize,
+    selection: usize,
+}
+
 impl Machine {
     fn optimise_steps(&self, order: &Vec<Vec<usize>>) -> usize {
         for setting in order[self.buttons.len()].iter() {
@@ -267,6 +289,122 @@ impl Machine {
         }
         usize::MAX
     }
+
+    fn all_parity_patterns(&self, order: &Vec<Vec<usize>>, goal: usize) -> Vec<usize> {
+        let mut settings = vec![];
+        for &setting in order[self.buttons.len()].iter() {
+            let mut option = 0;
+            for (i, &button) in self.buttons.iter().enumerate() {
+                let m = 1 << i;
+                if m & setting == 0 {
+                    continue;
+                }
+                option ^= button;
+            }
+
+            if option == goal {
+                settings.push(setting);
+            }
+        }
+        settings
+    }
+
+    fn solve_by_halving(&self, order: &Vec<Vec<usize>>) -> usize {
+        let mut cache = HashMap::new();
+        let mut joltage_cache = HashMap::new();
+        self.optimise_joltage(order, &mut cache, &mut joltage_cache, self.joltage.clone())
+    }
+
+    fn optimise_joltage(
+        &self,
+        order: &Vec<Vec<usize>>,
+        selection_cache: &mut HashMap<usize, Vec<usize>>,
+        joltage_cache: &mut HashMap<Joltage, usize>,
+        goal: Joltage,
+    ) -> usize {
+        // eprintln!(">>      {:?}", &goal);
+        if goal.iter().all(|&x| x == 0) {
+            //     eprintln!("0");
+            return 0;
+        }
+        if let Some(&x) = joltage_cache.get(&goal) {
+            return x;
+        }
+
+        let bin_goal = to_parity(&goal);
+        let selections_to_make_even = &*selection_cache
+            .entry(bin_goal)
+            .or_insert_with(|| self.all_parity_patterns(order, bin_goal));
+        let best_of_layer = self.layer_even(order, goal.clone(), bin_goal);
+        let ans = best_of_layer
+            .iter()
+            .map(|(goal, cost)| {
+                let half_goal = goal.iter().map(|x| x >> 1).collect();
+                //         // eprintln!("{:?}", &half_goal);
+                (*cost as usize).saturating_add(
+                    self.optimise_joltage(order, selection_cache, joltage_cache, half_goal)
+                        .saturating_mul(2),
+                )
+            })
+            .min()
+            .unwrap_or(usize::MAX);
+
+        joltage_cache.insert(goal, ans);
+        // eprintln!("<<      {:?}", &ans);
+        ans
+    }
+
+    fn layer_even(
+        &self,
+        order: &Vec<Vec<usize>>,
+        goal: ArrayVec<usize, 10>,
+        bin_goal: usize,
+    ) -> HashMap<ArrayVec<usize, 10>, u32> {
+        let selections_to_make_even = &self.all_parity_patterns(order, bin_goal);
+        let mut best_of_layer = HashMap::new();
+        // eprintln!("ways: {} {:?}", selections_to_make_even.len(), &selections_to_make_even);
+        for &pattern in selections_to_make_even {
+            if let Some(next_goal) = self.apply_pattern(&goal, &mut best_of_layer, pattern) {
+                let cost = pattern.count_ones();
+                //         eprintln!("{:0>6b} {:?} {:?} {}", pattern, goal, &next_goal, cost,);
+
+                let curr = best_of_layer.entry(next_goal.clone()).or_insert(cost);
+                *curr = (*curr).min(cost);
+            } else {
+                //         eprintln!("{:0>6b} {:?} negative", pattern, goal);
+            }
+        }
+        // eprintln!("endw: {} {:?}", selections_to_make_even.len(), &selections_to_make_even);
+        best_of_layer
+    }
+
+    fn apply_pattern(
+        &self,
+        goal: &ArrayVec<usize, 10>,
+        best_of_layer: &mut HashMap<ArrayVec<usize, 10>, u32>,
+        pattern: usize,
+    ) -> Option<Joltage> {
+        let mut copy = goal.clone();
+
+        for selected_btn in BitIter::from(pattern) {
+            for row in BitIter::from(self.buttons[selected_btn]) {
+                if copy[row] == 0 {
+                    return None;
+                }
+                copy[row] -= 1;
+            }
+        }
+        debug_assert!(copy.iter().all(|x| x.is_even()));
+        Some(copy)
+    }
+}
+
+fn to_parity(joltage: &[usize]) -> usize {
+    joltage
+        .iter()
+        .enumerate()
+        .map(|(i, &req)| (req & 1) << i)
+        .fold(0, |a, b| a | b)
 }
 
 impl Equation {
@@ -406,5 +544,28 @@ mod tests {
     fn test_gen() {
         let a = generate_sequences(3);
         assert_eq!(a[3], vec![0, 1, 2, 4, 3, 5, 6, 7])
+    }
+
+    #[test]
+    fn test_parity() {
+        assert_eq!(to_parity(&[3, 5, 4, 7]), 0b1011);
+        assert_eq!(to_parity(&[1, 1, 0, 8, 3, 5, 4, 7]), 0b10110011);
+    }
+
+    #[test]
+    fn test_consistency() {
+        assert_eq!(parse_indicator("...###"), to_parity(&[0, 0, 0, 1, 1, 1]));
+        assert_eq!(parse_button("4,5"), 0b110000);
+    }
+
+    #[test]
+    fn test_part_two_dp() {
+        let m: Machine = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}"
+            .parse()
+            .unwrap();
+
+        let order = &generate_sequences(6);
+
+        assert_eq!(m.solve_by_halving(order), 10);
     }
 }

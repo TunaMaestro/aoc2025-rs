@@ -38,6 +38,7 @@ num = "0.4.3"
 nalgebra = "0.34.1"
 microlp = "0.2.11"
 coin_cbc = "0.1.8"
+bit-iter = "1.3.1"
 
 [lints.rust]
 unused = "allow"
