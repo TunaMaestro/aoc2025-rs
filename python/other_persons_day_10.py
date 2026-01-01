@@ -2,6 +2,8 @@ from time import perf_counter_ns
 from functools import cache
 from itertools import combinations, product
 
+calls = 0
+
 def patterns(coeffs: list[tuple[int, ...]]) -> dict[tuple[int, ...], dict[tuple[int, ...], int]]:
 	num_buttons = len(coeffs)
 	num_variables = len(coeffs[0])
@@ -18,7 +20,9 @@ def solve_single(coeffs: list[tuple[int, ...]], goal: tuple[int, ...]) -> int:
 	pattern_costs = patterns(coeffs)
 	@cache
 	def solve_single_aux(goal: tuple[int, ...]) -> int:
+		global calls
 		if all(i == 0 for i in goal): return 0
+		calls += 1
 		answer = 1000000
 		for pattern, pattern_cost in pattern_costs[tuple(i%2 for i in goal)].items():
 			if all(i <= j for i, j in zip(pattern, goal)):
@@ -37,7 +41,7 @@ def solve(raw: str):
 		coeffs = [tuple(int(i in r) for i in range(len(goal))) for r in coeffs]
 
 		subscore = solve_single(coeffs, goal)
-		print(f'Line {I}/{len(lines)}: answer {subscore}')
+		# print(f'Line {I}/{len(lines)}: answer {subscore}')
 		score += subscore
 	print(score)
 
@@ -48,4 +52,5 @@ solve(input)
 end = perf_counter_ns()
 
 print(f"{(end - start) / 1_000_000} ms")
+print(f"in {calls} calls")
 

@@ -101,12 +101,12 @@ pub fn part_two(input: &str) -> Option<usize> {
     let max_buttons = machines.iter().map(|x| x.buttons.len()).max().unwrap_or(0);
     let ordered_iterations = generate_sequences(max_buttons);
 
-    Some(
-        machines
-            .iter()
-            .map(|x| x.solve_by_halving(&ordered_iterations))
-            .sum(),
-    )
+    let ans = machines
+        .iter()
+        .map(|x| x.solve_by_halving(&ordered_iterations))
+        .sum();
+
+    Some(ans)
 }
 
 pub fn part_two_ilp(input: &str) -> Option<usize> {
@@ -413,6 +413,9 @@ impl Equation {
             .expect("could not solve problem")
             .objective();
         ans.round() as usize
+    }
+
+    fn solve_linalg(&self) -> usize {
     }
 }
 
